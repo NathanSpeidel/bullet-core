@@ -8,6 +8,8 @@ package com.yahoo.bullet.querying;
 import com.yahoo.bullet.parsing.Clause;
 import com.yahoo.bullet.parsing.FilterClause;
 import com.yahoo.bullet.parsing.LogicalClause;
+import com.yahoo.bullet.parsing.ObjectFilterClause;
+import com.yahoo.bullet.parsing.StringFilterClause;
 import com.yahoo.bullet.querying.FilterOperations.Comparator;
 import com.yahoo.bullet.record.BulletRecord;
 import com.yahoo.bullet.result.RecordBox;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.yahoo.bullet.parsing.Clause.Operation.AND;
+import static com.yahoo.bullet.parsing.Clause.Operation.CONTAINS_KEY;
+import static com.yahoo.bullet.parsing.Clause.Operation.CONTAINS_VALUE;
 import static com.yahoo.bullet.parsing.Clause.Operation.EQUALS;
 import static com.yahoo.bullet.parsing.Clause.Operation.GREATER_EQUALS;
 import static com.yahoo.bullet.parsing.Clause.Operation.GREATER_THAN;
@@ -37,6 +41,7 @@ import static com.yahoo.bullet.parsing.Clause.Operation.OR;
 import static com.yahoo.bullet.parsing.Clause.Operation.REGEX_LIKE;
 import static com.yahoo.bullet.parsing.Clause.Operation.SIZE_OF;
 import static com.yahoo.bullet.parsing.FilterUtils.getFieldFilter;
+import static com.yahoo.bullet.parsing.FilterUtils.getObjectFieldFilter;
 import static com.yahoo.bullet.parsing.FilterUtils.makeClause;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
@@ -45,7 +50,8 @@ import static java.util.Collections.singletonMap;
 
 public class FilterOperationsTest {
     private static <T> Stream<TypedObject> make(TypedObject source, String... items) {
-        return FilterOperations.cast(source, asList(items));
+        List<ObjectFilterClause.Value> values = asList(items).stream().map(s -> new ObjectFilterClause.Value(ObjectFilterClause.Value.Kind.VALUE, s)).collect(Collectors.toList());
+        return FilterOperations.cast(null, source.getType(), values);
     }
 
     private static Stream<Pattern> makePattern(String... items) {
@@ -231,17 +237,16 @@ public class FilterOperationsTest {
 
     //***************************************** Filter Clause *********************************************************
 
-    @Test(expectedExceptions = NullPointerException.class)
+    @Test
     public void testFilterDefaults() {
-        FilterClause clause = new FilterClause();
+        StringFilterClause clause = new StringFilterClause();
         clause.setValues(asList("foo", "bar"));
-        // Without an operation, it is an error
-        FilterOperations.perform(RecordBox.get().getRecord(), clause);
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord(), clause));
     }
 
     @Test
     public void testFilterDefaultsWithOperation() {
-        FilterClause clause = new FilterClause();
+        StringFilterClause clause = new StringFilterClause();
         // With non-empty values, filter always returns true
         clause.setOperation(EQUALS);
         clause.setValues(emptyList());
@@ -250,7 +255,7 @@ public class FilterOperationsTest {
 
     @Test
     public void testFilterMissingFields() {
-        FilterClause clause = new FilterClause();
+        StringFilterClause clause = new StringFilterClause();
         clause.setOperation(EQUALS);
         Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord(), clause));
         clause.setField("field");
@@ -359,7 +364,7 @@ public class FilterOperationsTest {
     public void testSizeOf() {
         FilterClause clause = getFieldFilter("id", SIZE_OF, "1", "2");
         Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord(), clause));
-        Assert.assertTrue(FilterOperations.perform(RecordBox.get().add("id", 1).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("id", 1).getRecord(), clause));
         Assert.assertTrue(FilterOperations.perform(RecordBox.get().add("id", "12").getRecord(), clause));
         Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("id", "123").getRecord(), clause));
         Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setListOfStringMap("id", new ArrayList<>()), clause));
@@ -368,6 +373,41 @@ public class FilterOperationsTest {
         Assert.assertFalse(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("1", 1), singletonMap("2", 2), singletonMap("3", 3)).getRecord(), clause));
         Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setStringMap("id", new HashMap<>()), clause));
         Assert.assertTrue(FilterOperations.perform(RecordBox.get().addMap("id", Pair.of("1", 1), Pair.of("2", 2)).getRecord(), clause));
+    }
+
+    @Test
+    public void testContainsKey() {
+        FilterClause clause = getFieldFilter("id", CONTAINS_KEY, "1", "2");
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("id", "1").getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("1", 1)).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("3", 1)).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setListOfStringMap("id", new ArrayList<>()), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setStringMap("id", new HashMap<>()), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addMap("id", Pair.of("1", 1), Pair.of("2", 2)).getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord().setMapOfIntegerMap("id", singletonMap("1", singletonMap("3", 1))), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord().setMapOfIntegerMap("id", singletonMap("3", singletonMap("1", 1))), clause));
+    }
+
+    @Test
+    public void testContainsValue() {
+        FilterClause clause = getFieldFilter("id", CONTAINS_VALUE, "1", "2");
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("id", "1").getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("1", "1")).getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("1", 1)).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().addList("id", singletonMap("3", "3")).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setListOfStringMap("id", new ArrayList<>()), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setListOfStringMap("id", singletonList(new HashMap<>())), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setStringMap("id", new HashMap<>()), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addMap("id", Pair.of("1", "1"), Pair.of("2", "2")).getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().addMap("id", Pair.of("1", 1), Pair.of("2", 2)).getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().addMap("id", Pair.of("1", "3"), Pair.of("2", "3")).getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord().setMapOfStringMap("id", singletonMap("1", singletonMap("3", "1"))), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord().setMapOfIntegerMap("id", singletonMap("1", singletonMap("3", 1))), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().getRecord().setMapOfStringMap("id", singletonMap("3", singletonMap("1", "1"))), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setMapOfStringMap("id", singletonMap("3", singletonMap("1", "3"))), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord().setMapOfStringMap("id", singletonMap("2", new HashMap<>())), clause));
     }
 
     @Test
@@ -419,13 +459,13 @@ public class FilterOperationsTest {
 
     //***************************************** Logical Clause *********************************************************
 
-    @Test(expectedExceptions = NullPointerException.class)
+    @Test
     public void testLogicalNoOperation() {
         LogicalClause clause = new LogicalClause();
         clause.setClauses(asList(makeClause("foo", asList("foo", "bar"), EQUALS),
                                  makeClause("bar", asList("foo", "bar"), EQUALS)));
         Assert.assertNull(clause.getOperation());
-        FilterOperations.perform(RecordBox.get().getRecord(), clause);
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().getRecord(), clause));
     }
 
     @Test
@@ -590,5 +630,21 @@ public class FilterOperationsTest {
         Assert.assertFalse(FilterOperations.perform(recordE, clause));
         Assert.assertFalse(FilterOperations.perform(recordF, clause));
         Assert.assertTrue(FilterOperations.perform(recordG, clause));
+    }
+
+    @Test
+    public void testCompareToFields() {
+        FilterClause clause = getObjectFieldFilter("a", EQUALS, new ObjectFilterClause.Value(ObjectFilterClause.Value.Kind.FIELD, "b"));
+
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("a", "1").getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("a", "1").add("b", "2").getRecord(), clause));
+        Assert.assertTrue(FilterOperations.perform(RecordBox.get().add("a", "1").add("b", "1").getRecord(), clause));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("a", "1").addMap("b", Pair.of("1", 1)).getRecord(), clause));
+    }
+
+    @Test
+    public void testCompareToFieldsWithCastException() {
+        FilterClause clause = getObjectFieldFilter("a", EQUALS, new ObjectFilterClause.Value(ObjectFilterClause.Value.Kind.FIELD, "b"));
+        Assert.assertFalse(FilterOperations.perform(RecordBox.get().add("a", 1).add("b", 1L).getRecord(), clause));
     }
 }
