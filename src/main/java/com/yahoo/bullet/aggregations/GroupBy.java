@@ -24,8 +24,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.yahoo.bullet.common.Utilities.extractField;
-
 /**
  * This {@link Strategy} implements a Tuple Sketch based approach to doing a group by. In particular, it
  * provides a uniform sample of the groups if the number of unique groups exceed the Sketch size. Metrics like
@@ -53,7 +51,7 @@ public class GroupBy extends KMVStrategy<TupleSketch> {
         Map<GroupOperation, Number> metrics = GroupData.makeInitialMetrics(operations);
         container = new CachingGroupData(null, metrics);
 
-        ResizeFactor resizeFactor = getResizeFactor(BulletConfig.GROUP_AGGREGATION_SKETCH_RESIZE_FACTOR);
+        ResizeFactor resizeFactor = getResizeFactor(config, BulletConfig.GROUP_AGGREGATION_SKETCH_RESIZE_FACTOR);
         float samplingProbability = config.getAs(BulletConfig.GROUP_AGGREGATION_SKETCH_SAMPLING, Float.class);
 
         // Default at 512 gives a 13.27% error rate at 99.73% confidence (3 SD). Irrelevant since we are using this to
@@ -104,7 +102,7 @@ public class GroupBy extends KMVStrategy<TupleSketch> {
         Map<String, String> fieldValues = new HashMap<>();
         for (String field : fields) {
             // This explicitly does not do a TypedObject checking. Nulls (and everything else) turn into Strings
-            String value = Objects.toString(extractField(field, record));
+            String value = Objects.toString(record.extractField(field));
             fieldValues.put(field, value);
         }
         return fieldValues;

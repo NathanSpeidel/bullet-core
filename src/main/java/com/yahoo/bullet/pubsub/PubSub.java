@@ -9,7 +9,6 @@ import com.yahoo.bullet.common.BulletConfig;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.lang.reflect.Constructor;
 import java.util.List;
 
 /**
@@ -106,18 +105,15 @@ public abstract class PubSub {
     /**
      * Create a PubSub instance using the class specified in the config file.
      *
-     * @param config The {@link BulletConfig} containing the class name and PubSub settings.
+     * @param config The non-null {@link BulletConfig} containing the class name and PubSub settings.
      * @return an instance of specified class initialized with settings from the input file and defaults.
      * @throws PubSubException if PubSub creation fails.
      */
     public static PubSub from(BulletConfig config) throws PubSubException {
         try {
-            String pubSubClassName = (String) config.get(BulletConfig.PUBSUB_CLASS_NAME);
-            Class<? extends PubSub> pubSubClass = (Class<? extends PubSub>) Class.forName(pubSubClassName);
-            Constructor<? extends PubSub> constructor = pubSubClass.getConstructor(BulletConfig.class);
-            return constructor.newInstance(config);
-        } catch (Exception e) {
-            throw new PubSubException("Cannot create PubSub instance.", e);
+            return config.loadConfiguredClass(BulletConfig.PUBSUB_CLASS_NAME);
+        } catch (RuntimeException e) {
+            throw new PubSubException("Cannot create PubSub instance.", e.getCause());
         }
     }
 
@@ -126,7 +122,7 @@ public abstract class PubSub {
      *
      * @param name The name of the required configuration.
      * @param clazz The class of the required configuration.
-     * @param <T> The type to cast the configuration to. Inferred from tClass.
+     * @param <T> The type to cast the configuration to. Inferred from clazz.
      * @return The extracted configuration of type T.
      * @throws PubSubException if the configuration is missing or cannot be cast to type T.
      */

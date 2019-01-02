@@ -10,11 +10,19 @@ import com.yahoo.bullet.aggregations.Strategy;
 import com.yahoo.bullet.common.BulletConfig;
 import com.yahoo.bullet.common.BulletError;
 import com.yahoo.bullet.common.Monoidal;
+import com.yahoo.bullet.parsing.Aggregation;
 import com.yahoo.bullet.parsing.Clause;
 import com.yahoo.bullet.parsing.Projection;
 import com.yahoo.bullet.parsing.Query;
 import com.yahoo.bullet.parsing.Window;
+import com.yahoo.bullet.postaggregations.PostStrategy;
+import com.yahoo.bullet.querying.operations.AggregationOperations;
+import com.yahoo.bullet.querying.operations.FilterOperations;
+import com.yahoo.bullet.querying.operations.PostAggregationOperations;
+import com.yahoo.bullet.querying.operations.ProjectionOperations;
+import com.yahoo.bullet.querying.operations.WindowingOperations;
 import com.yahoo.bullet.record.BulletRecord;
+import com.yahoo.bullet.record.BulletRecordProvider;
 import com.yahoo.bullet.result.Clip;
 import com.yahoo.bullet.result.Meta;
 import com.yahoo.bullet.result.Meta.Concept;
@@ -29,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.yahoo.bullet.result.Meta.addIfNonNull;
 
@@ -289,11 +298,12 @@ public class Querier implements Monoidal {
     @Getter(AccessLevel.PACKAGE) @Setter(AccessLevel.PACKAGE)
     private Scheme window;
 
-    // For testing convenience
-    @Getter(AccessLevel.PACKAGE)
+    @Getter
     private RunningQuery runningQuery;
 
-    private BulletConfig config;
+    // Transient field, DO NOT use it beyond constructor and initialize methods.
+    private transient BulletConfig config;
+
     private Map<String, String> metaKeys;
     private boolean hasNewData = false;
 
@@ -302,6 +312,12 @@ public class Querier implements Monoidal {
 
     // Mode for the querier
     private Mode mode;
+
+    private List<PostStrategy> postStrategies;
+    // Fields which are required by post aggregations and will not shown in final result.
+    private Map<String, String> transientFields;
+
+    private BulletRecordProvider provider;
 
     /**
      * Constructor that takes a String representation of the query and a configuration to use. This also starts the
@@ -352,6 +368,8 @@ public class Querier implements Monoidal {
         this.mode = mode;
         this.runningQuery = query;
         this.config = config;
+        this.provider = config.getBulletRecordProvider();
+        this.transientFields = new HashMap<>();
     }
 
     // ********************************* Monoidal Interface Overrides *********************************
@@ -388,6 +406,17 @@ public class Querier implements Monoidal {
             return errors;
         }
 
+        if (query.getPostAggregations() != null) {
+            postStrategies = query.getPostAggregations().stream().map(PostAggregationOperations::findPostStrategy).collect(Collectors.toList());
+            for (PostStrategy postStrategy : postStrategies) {
+                errors = postStrategy.initialize();
+                if (errors.isPresent()) {
+                    return errors;
+                }
+                addTransientFieldsFor(postStrategy);
+            }
+        }
+
         // Scheme is guaranteed to not be null.
         window = WindowingOperations.findScheme(query, strategy, config);
         return window.initialize();
@@ -420,8 +449,8 @@ public class Querier implements Monoidal {
             return;
         }
 
-        BulletRecord projected = project(record);
         try {
+            BulletRecord projected = project(record);
             window.consume(projected);
             hasNewData = true;
         } catch (RuntimeException e) {
@@ -448,7 +477,7 @@ public class Querier implements Monoidal {
     }
 
     /**
-     * Get the result emitted so far after the last window.
+     * Get the result emitted so far after the last window. Post aggregations are NOT applied.
      *
      * @return The byte[] representation of the serialized result.
      */
@@ -474,7 +503,10 @@ public class Querier implements Monoidal {
     public List<BulletRecord> getRecords() {
         try {
             incrementRate();
-            return window.getRecords();
+            Clip result = new Clip();
+            result.add(window.getRecords());
+            result = postAggregate(result);
+            return result.getRecords();
         } catch (RuntimeException e) {
             log.error("Unable to get serialized result for query {}", this);
             return null;
@@ -510,6 +542,7 @@ public class Querier implements Monoidal {
         try {
             incrementRate();
             result = window.getResult();
+            result = postAggregate(result);
             result.add(getResultMetadata());
         } catch (RuntimeException e) {
             log.error("Unable to get serialized data for query {}", this);
@@ -544,6 +577,15 @@ public class Querier implements Monoidal {
     }
 
     // ********************************* Public helpers *********************************
+
+    /**
+     * Gets the {@link Query} instance for this Query.
+     *
+     * @return The {@link Query} instance for this object.
+     */
+    public Query getQuery() {
+        return runningQuery.getQuery();
+    }
 
     /**
      * Returns true if the query has expired and will never accept any more data.
@@ -586,7 +628,7 @@ public class Querier implements Monoidal {
         if (rateLimit == null || !rateLimit.isExceededRate()) {
             return null;
         }
-        return new RateLimitError(rateLimit.getCurrentRate(), config);
+        return new RateLimitError(rateLimit.getCurrentRate(), rateLimit.getAbsoluteRateLimit());
     }
 
     /**
@@ -632,7 +674,20 @@ public class Querier implements Monoidal {
 
     private BulletRecord project(BulletRecord record) {
         Projection projection = runningQuery.getQuery().getProjection();
-        return projection != null ? ProjectionOperations.project(record, projection, config.getBulletRecordProvider()) : record;
+        return projection != null ? ProjectionOperations.project(record, projection, transientFields, provider) : record;
+    }
+
+    private Clip postAggregate(Clip clip) {
+        if (postStrategies == null) {
+            return clip;
+        }
+        for (PostStrategy postStrategy : postStrategies) {
+            clip = postStrategy.execute(clip);
+        }
+        for (String field : transientFields.keySet()) {
+            clip.getRecords().forEach(record -> record.remove(field));
+        }
+        return clip;
     }
 
     private Meta getResultMetadata() {
@@ -672,5 +727,17 @@ public class Querier implements Monoidal {
 
     private String getMetaKey() {
         return metaKeys.getOrDefault(Meta.Concept.QUERY_METADATA.getName(), null);
+    }
+
+    private void addTransientFieldsFor(PostStrategy postStrategy) {
+        Projection projection = runningQuery.getQuery().getProjection();
+        Aggregation aggregation = runningQuery.getQuery().getAggregation();
+        if (aggregation.getType() == Aggregation.Type.RAW && projection != null) {
+            Map<String, String> projectionFields = projection.getFields();
+            if (projectionFields != null) {
+                postStrategy.getRequiredFields().stream().filter(field -> !projectionFields.containsValue(field))
+                            .forEach(field -> transientFields.put(field, field));
+            }
+        }
     }
 }

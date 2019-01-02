@@ -5,36 +5,14 @@
  */
 package com.yahoo.bullet.parsing;
 
-import com.google.gson.annotations.Expose;
-import com.google.gson.annotations.SerializedName;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
+import com.yahoo.bullet.common.BulletError;
+import com.yahoo.bullet.typesystem.Type;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class ObjectFilterClause extends FilterClause<ObjectFilterClause.Value> {
-    @Getter @AllArgsConstructor
-    public static class Value {
-        public enum Kind {
-            @SerializedName("VALUE")
-            VALUE,
-            @SerializedName("FIELD")
-            FIELD,
-            @SerializedName("CAST")
-            CAST
-        }
-        @Expose
-        private Kind kind;
-        @Expose
-        private String value;
-
-        @Override
-        public String toString() {
-            return "{kind: " + kind + ", " + "value: " + value + "}";
-        }
-    }
-
+public class ObjectFilterClause extends FilterClause<Value> {
     /**
      * Default Constructor. GSON recommended.
      */
@@ -60,5 +38,29 @@ public class ObjectFilterClause extends FilterClause<ObjectFilterClause.Value> {
     @Override
     public String getValue(Value value) {
         return value.getValue();
+    }
+
+    @Override
+    public boolean hasNull(Value value) {
+        return (value.getType() == null || value.getType() == Type.NULL) && Type.isNullExpression(getValue(value));
+    }
+
+    @Override
+    public Optional<List<BulletError>> initialize() {
+        Optional<List<BulletError>> errors = super.initialize();
+        if (errors.isPresent()) {
+            return errors;
+        }
+
+        if (values != null) {
+            for (Value value : values) {
+                errors = value.initialize();
+                if (errors.isPresent()) {
+                    return errors;
+                }
+            }
+        }
+
+        return Optional.empty();
     }
 }

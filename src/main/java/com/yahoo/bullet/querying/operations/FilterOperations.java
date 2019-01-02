@@ -3,12 +3,12 @@
  *  Licensed under the terms of the Apache License, Version 2.0.
  *  See the LICENSE file associated with the project for terms.
  */
-package com.yahoo.bullet.querying;
+package com.yahoo.bullet.querying.operations;
 
 import com.yahoo.bullet.parsing.Clause;
 import com.yahoo.bullet.parsing.LogicalClause;
 import com.yahoo.bullet.parsing.ObjectFilterClause;
-import com.yahoo.bullet.parsing.StringFilterClause;
+import com.yahoo.bullet.parsing.Value;
 import com.yahoo.bullet.record.BulletRecord;
 import com.yahoo.bullet.typesystem.Type;
 import com.yahoo.bullet.typesystem.TypedObject;
@@ -23,10 +23,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import static com.yahoo.bullet.common.Utilities.extractField;
 import static com.yahoo.bullet.common.Utilities.extractTypedObject;
 import static com.yahoo.bullet.common.Utilities.isEmpty;
-import static com.yahoo.bullet.typesystem.TypedObject.GENERIC_UNKNOWN;
 import static com.yahoo.bullet.typesystem.TypedObject.IS_NOT_NULL;
 import static com.yahoo.bullet.typesystem.TypedObject.IS_PRIMITIVE_OR_NULL;
 
@@ -63,7 +61,7 @@ public class FilterOperations {
     private static final Comparator<TypedObject> GE = (t, s) -> s.anyMatch(i -> t.compareTo(i) >= 0);
     private static final Comparator<TypedObject> LE = (t, s) -> s.anyMatch(i -> t.compareTo(i) <= 0);
     private static final Comparator<Pattern> RLIKE = (t, s) -> s.map(p -> p.matcher(t.toString())).anyMatch(Matcher::matches);
-    private static final Comparator<TypedObject> SIZEOF = (t, s) -> s.anyMatch(i -> i.equalTo(t.size()));
+    private static final Comparator<TypedObject> SIZEIS = (t, s) -> s.anyMatch(i -> i.equalTo(t.size()));
     private static final Comparator<TypedObject> CONTAINSKEY = (t, s) -> s.anyMatch(i -> t.containsKey((String) i.getValue()));
     private static final Comparator<TypedObject> CONTAINSVALUE = (t, s) -> s.anyMatch(t::containsValue);
     private static final LogicalOperator AND = (r, s) -> s.allMatch(Boolean::valueOf);
@@ -78,7 +76,7 @@ public class FilterOperations {
         COMPARATORS.put(Clause.Operation.LESS_THAN, isNotNullAnd(LT));
         COMPARATORS.put(Clause.Operation.GREATER_EQUALS, isNotNullAnd(GE));
         COMPARATORS.put(Clause.Operation.LESS_EQUALS, isNotNullAnd(LE));
-        COMPARATORS.put(Clause.Operation.SIZE_OF, isNotNullAnd(SIZEOF));
+        COMPARATORS.put(Clause.Operation.SIZE_IS, isNotNullAnd(SIZEIS));
         COMPARATORS.put(Clause.Operation.CONTAINS_KEY, isNotNullAnd(CONTAINSKEY));
         COMPARATORS.put(Clause.Operation.CONTAINS_VALUE, isNotNullAnd(CONTAINSVALUE));
     }
@@ -97,7 +95,7 @@ public class FilterOperations {
      * @param values The {@link List} of values to try and cast to the object.
      * @return A {@link Stream} of casted {@link TypedObject}.
      */
-    static Stream<TypedObject> cast(BulletRecord record, Type type, List<ObjectFilterClause.Value> values) {
+    static Stream<TypedObject> cast(BulletRecord record, Type type, List<Value> values) {
         return values.stream().filter(Objects::nonNull).map(v -> getTypedValue(record, type, v)).filter(IS_PRIMITIVE_OR_NULL);
     }
 
@@ -105,18 +103,20 @@ public class FilterOperations {
         return (t, s) -> IS_NOT_NULL.test(t) && comparator.compare(t, s);
     }
 
-    private static TypedObject getTypedValue(BulletRecord record, Type type, ObjectFilterClause.Value value) {
+    private static TypedObject getTypedValue(BulletRecord record, Type type, Value value) {
+        TypedObject result = null;
+        String valueString = value.getValue();
+        Type newType = value.getType();
         switch (value.getKind()) {
             case FIELD:
-                return TypedObject.typeCastFromObject(type, extractField(value.getValue(), record));
+                result = newType == null ? TypedObject.typeCastFromObject(type, record.extractField(valueString))
+                                         : extractTypedObject(valueString, record).forceCast(newType);
+                break;
             case VALUE:
-                // Right now, we cast the filter values which are lists of strings to the value being filtered on's type.
-                // In the future, we might want to support providing non-String values.
-                return TypedObject.typeCast(type, value.getValue());
-            default:
-                log.error("Unsupported value kind: " + value.getKind().name());
-                return GENERIC_UNKNOWN;
+                result = newType == null ? TypedObject.typeCast(type, valueString) : TypedObject.forceCast(newType, valueString);
+                break;
         }
+        return result;
     }
 
     private static boolean performRelational(BulletRecord record, ObjectFilterClause clause) {
@@ -129,8 +129,9 @@ public class FilterOperations {
             return REGEX_LIKE.compare(object, clause.getPatterns().stream());
         }
 
+
         Type type;
-        if (operator == Clause.Operation.SIZE_OF) {
+        if (operator == Clause.Operation.SIZE_IS) {
             type = Type.INTEGER;
         } else if (operator == Clause.Operation.CONTAINS_KEY) {
             type = Type.STRING;
@@ -140,10 +141,6 @@ public class FilterOperations {
             type = object.getType();
         }
         return COMPARATORS.get(operator).compare(object, cast(record, type, clause.getValues()));
-    }
-
-    private static boolean performRelational(BulletRecord record, StringFilterClause clause) {
-        return performRelational(record, new ObjectFilterClause(clause));
     }
 
     private static boolean performLogical(BulletRecord record, LogicalClause clause) {
@@ -160,18 +157,17 @@ public class FilterOperations {
      *
      * @param record The BulletRecord that is the subject of this clause.
      * @param clause The Clause that is being applied.
-     * @return The result of th
+     * @return The resulting boolean from applying the clause on the record.
      */
     public static boolean perform(BulletRecord record, Clause clause) {
-        // Rather than define another hierarchy of Clause -> StringFilterClause, ObjectFilterClause, LogicalClause evaluators, we'll eat the
-        // cost of violating polymorphism in this one spot.
+        // Rather than define another hierarchy of Clause -> ObjectFilterClause, LogicalClause evaluators, we'll eat
+        // the cost of violating polymorphism in this one spot.
         // We do not want processing logic in FilterClause or LogicalClause, otherwise we could put the appropriate
         // methods in those classes.
         try {
+            // All StringFilterClauses have been rewritten at Query configuration.
             if (clause instanceof ObjectFilterClause) {
                 return performRelational(record, (ObjectFilterClause) clause);
-            } else if (clause instanceof StringFilterClause) {
-                return performRelational(record, (StringFilterClause) clause);
             } else {
                 return performLogical(record, (LogicalClause) clause);
             }

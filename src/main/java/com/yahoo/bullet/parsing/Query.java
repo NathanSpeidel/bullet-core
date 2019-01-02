@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.yahoo.bullet.common.BulletError.makeError;
 
@@ -35,11 +36,15 @@ public class Query implements Configurable, Initializable {
     private Window window;
     @Expose
     private Long duration;
+    @Expose
+    private List<PostAggregation> postAggregations;
 
     public static final BulletError ONLY_RAW_RECORD = makeError("Only \"RAW\" aggregation types can have window emit type \"RECORD\"",
                                                                 "Change your aggregation type or your window emit type to \"TIME\"");
     public static final BulletError NO_RAW_ALL = makeError("The \"RAW\" aggregation types cannot have window include \"ALL\"",
                                                            "Change your aggregation type or your window include type");
+    public static final BulletError AT_MOST_ONE_ORDERBY = makeError("The post aggregations cannot have multiple \"ORDERBY\"",
+                                                           "Change your post aggregations to keep at most one \"ORDERBY\"");
     /**
      * Default constructor. GSON recommended.
      */
@@ -52,6 +57,7 @@ public class Query implements Configurable, Initializable {
     @SuppressWarnings("unchecked")
     public void configure(BulletConfig config) {
         if (filters != null) {
+            filters = rewriteClauses(filters);
             filters.forEach(f -> f.configure(config));
         }
         if (projection != null) {
@@ -75,6 +81,10 @@ public class Query implements Configurable, Initializable {
 
         // Null or negative, then default, else min of duration and max.
         duration = (duration == null || duration <= 0) ? durationDefault : Math.min(duration, durationMax);
+
+        if (postAggregations != null) {
+            postAggregations.forEach(p -> p.configure(config));
+        }
     }
 
     @Override
@@ -91,6 +101,13 @@ public class Query implements Configurable, Initializable {
         }
 
         aggregation.initialize().ifPresent(errors::addAll);
+
+        if (postAggregations != null) {
+            if (postAggregations.stream().filter(postAggregation -> postAggregation.getType() == PostAggregation.Type.ORDER_BY).count() > 1) {
+                errors.add(AT_MOST_ONE_ORDERBY);
+            }
+            postAggregations.forEach(p -> p.initialize().ifPresent(errors::addAll));
+        }
 
         if (window != null) {
             window.initialize().ifPresent(errors::addAll);
@@ -110,6 +127,24 @@ public class Query implements Configurable, Initializable {
     @Override
     public String toString() {
         return "{filters: " + filters + ", projection: " + projection + ", aggregation: " + aggregation +
-               ", window: " + window + ", duration: " + duration + "}";
+                ", postAggregations: " + postAggregations + ", window: " + window + ", duration: " + duration + "}";
+    }
+
+    private List<Clause> rewriteClauses(List<Clause> clauses) {
+        if (clauses == null) {
+            return clauses;
+        }
+        return clauses.stream().map(this::rewriteClause).collect(Collectors.toList());
+    }
+
+    private Clause rewriteClause(Clause clause) {
+        Clause toReturn = clause;
+        if (clause instanceof LogicalClause) {
+            LogicalClause logical = ((LogicalClause) clause);
+            logical.setClauses(rewriteClauses(logical.getClauses()));
+        } else if (clause instanceof StringFilterClause) {
+            toReturn = new ObjectFilterClause((StringFilterClause) clause);
+        }
+        return toReturn;
     }
 }

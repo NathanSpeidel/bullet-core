@@ -62,6 +62,16 @@ public enum Type {
     }
 
     /**
+     * Checks to see if a given string is the {@link #NULL_EXPRESSION}.
+     *
+     * @param string The string to check if it is null.
+     * @return A boolean denoting whether the given string represented a null.
+     */
+    public static boolean isNullExpression(String string) {
+        return NULL_EXPRESSION.compareToIgnoreCase(string) == 0;
+    }
+
+    /**
      * Takes a value and casts it to this type.
      *
      * @param value The string value that is being cast.
@@ -84,7 +94,7 @@ public enum Type {
             case STRING:
                 return value;
             case NULL:
-                return value == null || NULL_EXPRESSION.compareToIgnoreCase(value) == 0 ? null : value;
+                return value == null || isNullExpression(value) ? null : value;
             // We won't support the rest for castability. This wouldn't happen if getType was used to create
             // TypedObjects because because we only support cast operation on PRIMITIVES and NULL.
             default:
@@ -106,6 +116,127 @@ public enum Type {
             return ((Float) object).doubleValue();
         } else {
             return underlyingType.cast(object);
+        }
+    }
+
+    /**
+     * Force cast the Object to given {@link Type} castedType.
+     *
+     * @param castedType The {@link Type} to be casted to.
+     * @param object The object to be casted.
+     * @return The {@link Object} to be casted.
+     */
+    public Object forceCast(Type castedType, Object object) {
+        switch (castedType) {
+            case INTEGER:
+                return castToInteger(object);
+            case BOOLEAN:
+                return castToBoolean(object);
+            case STRING:
+                return object.toString();
+            case LONG:
+                return castToLong(object);
+            case FLOAT:
+                return castToFloat(object);
+            case DOUBLE:
+                return castToDouble(object);
+            default:
+                throw new UnsupportedOperationException("Unsupported type cannot be casted: " + castedType);
+        }
+    }
+
+    private Integer castToInteger(Object object) {
+        switch (this) {
+            case INTEGER:
+                return (Integer) object;
+            case LONG:
+                return ((Long) object).intValue();
+            case FLOAT:
+                return (int) (((Float) object).floatValue());
+            case DOUBLE:
+                return (int) (((Double) object).doubleValue());
+            case STRING:
+                return (int) (Double.parseDouble((String) object));
+            case BOOLEAN:
+                return ((Boolean) object) ? 1 : 0;
+            default:
+                throw new UnsupportedOperationException("Can not cast to Integer from Type: " + this);
+        }
+    }
+
+    private Long castToLong(Object object) {
+        switch (this) {
+            case INTEGER:
+                return ((Integer) object).longValue();
+            case LONG:
+                return (Long) object;
+            case FLOAT:
+                return (long) (((Float) object).floatValue());
+            case DOUBLE:
+                return (long) (((Double) object).doubleValue());
+            case STRING:
+                return (long) (Double.parseDouble((String) object));
+            case BOOLEAN:
+                return ((Boolean) object) ? 1L : 0L;
+            default:
+                throw new UnsupportedOperationException("Can not cast to Long from Type: " + this);
+        }
+    }
+
+    private Float castToFloat(Object object) {
+        switch (this) {
+            case INTEGER:
+                return (float) (Integer) object;
+            case LONG:
+                return (float) (Long) object;
+            case FLOAT:
+                return (Float) object;
+            case DOUBLE:
+                return ((Double) object).floatValue();
+            case STRING:
+                return (float) (Double.parseDouble((String) object));
+            case BOOLEAN:
+                return ((Boolean) object) ? 1.0f : 0.0f;
+            default:
+                throw new UnsupportedOperationException("Can not cast to Long from Type: " + this);
+        }
+    }
+
+    private Double castToDouble(Object object) {
+        switch (this) {
+            case INTEGER:
+                return (double) (Integer) object;
+            case LONG:
+                return (double) (Long) object;
+            case FLOAT:
+                return ((Float) object).doubleValue();
+            case DOUBLE:
+                return (Double) object;
+            case STRING:
+                return Double.parseDouble((String) object);
+            case BOOLEAN:
+                return ((Boolean) object) ? 1.0 : 0.0;
+            default:
+                throw new UnsupportedOperationException("Can not cast to Long from Type: " + this);
+        }
+    }
+
+    private Boolean castToBoolean(Object object) {
+        switch (this) {
+            case INTEGER:
+                return (Integer) object != 0;
+            case LONG:
+                return ((Long) object) != 0;
+            case FLOAT:
+                return ((Float) object) != 0;
+            case DOUBLE:
+                return ((Double) object) != 0;
+            case STRING:
+                return Boolean.parseBoolean((String) object);
+            case BOOLEAN:
+                return (Boolean) object;
+            default:
+                throw new UnsupportedOperationException("Can not cast to Long from Type: " + this);
         }
     }
 }

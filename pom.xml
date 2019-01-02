@@ -4,7 +4,7 @@
 
     <groupId>com.yahoo.bullet</groupId>
     <artifactId>bullet-core</artifactId>
-    <version>0.4.3-SNAPSHOT</version>
+    <version>0.6.6-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>bullet-core</name>
 
@@ -36,7 +36,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <bullet.record.version>0.2.1</bullet.record.version>
+        <bullet.record.version>0.3.0</bullet.record.version>
         <sketches.version>0.9.1</sketches.version>
     </properties>
 
@@ -93,6 +93,11 @@
             <version>3.4</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math3</artifactId>
+            <version>3.6.1</version>
+        </dependency>
+        <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.7</version>
@@ -105,7 +110,7 @@
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.3.4</version>
+            <version>4.3.6</version>
         </dependency>
     </dependencies>
 

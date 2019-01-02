@@ -69,7 +69,7 @@ public class TypedObject implements Comparable<TypedObject> {
     }
 
     /**
-     * Takes a String value and returns a casted TypedObject according to this type.
+     * Takes a String value and returns a casted TypedObject according to the given type.
      *
      * @param type The {@link Type} to cast the values to.
      * @param value The string value that is being cast.
@@ -90,7 +90,7 @@ public class TypedObject implements Comparable<TypedObject> {
      * @param type The {@link Type} to cast the values to.
      * @param object The Object that is being cast.
      * @return The casted TypedObject with the type set to the appropriate {@link Type} or
-     *         {@link TypedObject#GENERIC_UNKNOWN} if it cannot.
+     * {@link TypedObject#GENERIC_UNKNOWN} if it cannot.
      */
     public static TypedObject typeCastFromObject(Type type, Object object) {
         if (object == null) {
@@ -154,6 +154,27 @@ public class TypedObject implements Comparable<TypedObject> {
             default:
                 throw new RuntimeException("Unsupported type cannot be compared: " + type);
         }
+    }
+
+    /**
+     * Force cast to the {@link TypedObject} with given {@link Type} castedType.
+     *
+     * @param castedType The {@link Type} to be casted to
+     * @return The casted {@link TypedObject}
+     */
+    public TypedObject forceCast(Type castedType) {
+        return new TypedObject(castedType, type.forceCast(castedType, value));
+    }
+
+    /**
+     * Force cast the value String to the {@link TypedObject} with given {@link Type} castedType.
+     *
+     * @param castedType The {@link Type} to be casted to
+     * @param value The value String to be casted.
+     * @return The casted {@link TypedObject}
+     */
+    public static TypedObject forceCast(Type castedType, String value) {
+        return new TypedObject(castedType, Type.STRING.forceCast(castedType, value));
     }
 
     /**

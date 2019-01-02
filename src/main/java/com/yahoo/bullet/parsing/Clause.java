@@ -14,8 +14,10 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.yahoo.bullet.common.BulletError.makeError;
 import static java.util.Arrays.asList;
@@ -39,8 +41,8 @@ public abstract class Clause implements Configurable, Initializable {
         LESS_EQUALS,
         @SerializedName("RLIKE")
         REGEX_LIKE,
-        @SerializedName("SIZEOF")
-        SIZE_OF,
+        @SerializedName("SIZEIS")
+        SIZE_IS,
         @SerializedName("CONTAINSKEY")
         CONTAINS_KEY,
         @SerializedName("CONTAINSVALUE")
@@ -52,8 +54,9 @@ public abstract class Clause implements Configurable, Initializable {
         @SerializedName("NOT")
         NOT;
 
-        public static final List<String> LOGICALS = asList("AND", "OR", "NOT");
-        public static final List<String> RELATIONALS = asList("==", "!=", ">=", "<=", ">", "<", "RLIKE", "SIZEOF", "CONTAINSKEY", "CONTAINSVALUE");
+        public static final Set<String> LOGICALS = new HashSet<>(asList("AND", "OR", "NOT"));
+        public static final Set<String> RELATIONALS =
+            new HashSet<>(asList("==", "!=", ">=", "<=", ">", "<", "RLIKE", "SIZEIS", "CONTAINSKEY", "CONTAINSVALUE"));
     }
 
     @Expose
