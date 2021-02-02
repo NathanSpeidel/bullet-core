@@ -6,28 +6,34 @@
 package com.yahoo.bullet.pubsub;
 
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
 
-@NoArgsConstructor
 public class Metadata implements Serializable {
     public enum Signal {
         ACKNOWLEDGE,
         COMPLETE,
         FAIL,
-        KILL
+        KILL,
+        REPLAY,
+        CUSTOM
     }
 
-    private static final long serialVersionUID = 4234800234857923112L;
-
+    private static final long serialVersionUID = 7478596915692253699L;
     @Getter @Setter
     private Signal signal;
-
-    // This is a Serializable object enforced through the constructor, getter and setter. Storing it as an Object so
-    // GSON can reify an instance.
+    // Serializable enforced through the constructor, getter, and setter. Is Object so GSON can reify an instance.
     private Object content;
+    @Getter @Setter
+    private long created;
+
+    /**
+     * Default constructor that creates an empty instance of metadata.
+     */
+    public Metadata() {
+        created = System.currentTimeMillis();
+    }
 
     /**
      * Allows you to create an instance with a {@link com.yahoo.bullet.pubsub.Metadata.Signal} and a
@@ -37,8 +43,18 @@ public class Metadata implements Serializable {
      * @param object The object that is the metadata.
      */
     public Metadata(Signal signal, Serializable object) {
+        this();
         this.signal = signal;
         this.content = object;
+    }
+
+    /**
+     * Returns a copy of the current metadata. Subclasses should override this method.
+     *
+     * @return A copy of this {@link Metadata}.
+     */
+    public Metadata copy() {
+        return new Metadata(signal, (Serializable) content);
     }
 
     /**

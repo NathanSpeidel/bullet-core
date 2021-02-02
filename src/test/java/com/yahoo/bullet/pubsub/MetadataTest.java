@@ -22,11 +22,9 @@ public class MetadataTest {
     public void testSignalTypes() {
         Metadata empty = new Metadata();
         Assert.assertFalse(empty.hasSignal());
-
         Assert.assertTrue(new Metadata(Signal.ACKNOWLEDGE, null).hasSignal(Signal.ACKNOWLEDGE));
         Assert.assertTrue(new Metadata(Signal.FAIL, null).hasSignal(Signal.FAIL));
         Assert.assertTrue(new Metadata(Signal.COMPLETE, null).hasSignal(Signal.COMPLETE));
-
         Assert.assertFalse(new Metadata(Signal.ACKNOWLEDGE, null).hasSignal(Signal.FAIL));
     }
 
@@ -36,6 +34,15 @@ public class MetadataTest {
         Metadata empty = new Metadata();
         Assert.assertTrue(full.hasContent());
         Assert.assertFalse(empty.hasContent());
+    }
+
+    @Test
+    public void testCreatedTimestamp() {
+        long before = System.currentTimeMillis();
+        Metadata metadata = new Metadata();
+        long after = System.currentTimeMillis();
+        Assert.assertTrue(before <= metadata.getCreated());
+        Assert.assertTrue(after >= metadata.getCreated());
     }
 
     @Test
@@ -50,5 +57,23 @@ public class MetadataTest {
         Metadata empty = new Metadata();
         empty.setSignal(Signal.ACKNOWLEDGE);
         Assert.assertEquals(empty.getSignal(), Signal.ACKNOWLEDGE);
+    }
+
+    @Test
+    public void testSetCreated() {
+        Metadata metadata = new Metadata();
+        Assert.assertNotEquals(metadata.getCreated(), 0L);
+
+        metadata.setCreated(0L);
+        Assert.assertEquals(metadata.getCreated(), 0L);
+    }
+
+    @Test
+    public void testCopy() {
+        Metadata metadata = new Metadata(Signal.CUSTOM, "foo");
+        Metadata copy = metadata.copy();
+        Assert.assertNotEquals(metadata, copy);
+        Assert.assertEquals(metadata.getSignal(), copy.getSignal());
+        Assert.assertEquals(metadata.getContent(), copy.getContent());
     }
 }

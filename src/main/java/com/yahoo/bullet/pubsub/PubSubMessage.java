@@ -11,20 +11,21 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
  * The class of messages that can be understood by the PubSub package. The id should be set to the query ID generated
- * by the web service for Bullet queries. The sequence identifies individual segments if a multi-part response is
- * emitted by Bullet.
+ * by the web service for Bullet queries.
  */
 @Getter
 public class PubSubMessage implements Serializable, JSONFormatter {
-    private static final long serialVersionUID = 2407848310969237888L;
+    private static final long serialVersionUID = -5068189058170874687L;
+    public static final Charset CHARSET = StandardCharsets.UTF_8;
 
     private String id;
-    private int sequence;
-    private String content;
+    private byte[] content;
     @Setter
     private Metadata metadata;
 
@@ -32,39 +33,7 @@ public class PubSubMessage implements Serializable, JSONFormatter {
      * Constructor for a message having no information. Used internally. Not recommended for use.
      */
     public PubSubMessage() {
-        this("", (String) null);
-    }
-
-    /**
-     * Constructor for a message having only content.
-     *
-     * @param id The ID associated with the message.
-     * @param content The content of the message.
-     */
-    public PubSubMessage(String id, String content) {
-        this(id, content, (Metadata) null, -1);
-    }
-
-    /**
-     * Constructor for a message having content and a sequence number.
-     *
-     * @param id The ID associated with the message.
-     * @param content The content of the message.
-     * @param sequence The sequence number of the message.
-     */
-    public PubSubMessage(String id, String content, int sequence) {
-        this(id, content, (Metadata) null, sequence);
-    }
-
-    /**
-     * Constructor for a message having content and {@link Metadata}.
-     *
-     * @param id The ID associated with the message.
-     * @param content The content of the message.
-     * @param metadata The Metadata associated with the message.
-     */
-    public PubSubMessage(String id, String content, Metadata metadata) {
-        this(id, content, metadata, -1);
+        this("", (byte[]) null);
     }
 
     /**
@@ -78,41 +47,58 @@ public class PubSubMessage implements Serializable, JSONFormatter {
     }
 
     /**
+     * Constructor for a message having only content.
+     *
+     * @param id The ID associated with the message.
+     * @param content The content of the message.
+     */
+    public PubSubMessage(String id, byte[] content) {
+        this(id, content, (Metadata) null);
+    }
+
+    /**
+     * Constructor for a message having only content as a String.
+     *
+     * @param id The ID associated with the message.
+     * @param content The content of the message as a String.
+     */
+    public PubSubMessage(String id, String content) {
+        this(id, content, null);
+    }
+
+    /**
      * Constructor for a message having content and a {@link Metadata.Signal}.
      *
      * @param id The ID associated with the message.
      * @param content The content of the message.
      * @param signal The Signal to be sent with the message.
      */
-    public PubSubMessage(String id, String content, Signal signal) {
-        this(id, content, signal, -1);
+    public PubSubMessage(String id, byte[] content, Signal signal) {
+        this(id, content, new Metadata(signal, null));
     }
 
     /**
-     * Constructor for a message having content, a {@link Signal} and a sequence number.
+     * Constructor for a message having content as a String and {@link Metadata}.
      *
      * @param id The ID associated with the message.
-     * @param content The content of the message.
-     * @param signal The Signal to be sent with the message.
-     * @param sequence The sequence number of the message.
+     * @param content The content of the message as a String.
+     * @param metadata The Metadata associated with the message.
      */
-    public PubSubMessage(String id, String content, Signal signal, int sequence) {
-        this(id, content, new Metadata(signal, null), sequence);
+    public PubSubMessage(String id, String content, Metadata metadata) {
+        this(id, content == null ? null : content.getBytes(CHARSET), metadata);
     }
 
     /**
-     * Constructor for a message having content, {@link Metadata} and a sequence number.
+     * Constructor for a message having content and {@link Metadata}.
      *
      * @param id The ID associated with the message.
      * @param content The content of the message.
      * @param metadata The Metadata associated with the message.
-     * @param sequence The sequence number of the message.
      */
-    public PubSubMessage(String id, String content, Metadata metadata, int sequence) {
+    public PubSubMessage(String id, byte[] content, Metadata metadata) {
         this.id = Objects.requireNonNull(id, "ID cannot be null");
         this.content = content;
         this.metadata = metadata;
-        this.sequence = sequence;
     }
 
     /**
@@ -152,9 +138,19 @@ public class PubSubMessage implements Serializable, JSONFormatter {
         return hasMetadata() && metadata.hasSignal();
     }
 
+    /**
+     * Returns the content stored in the message as a String. You should use this to read the String back from the
+     * message if you provided it originally to the message as a String.
+     *
+     * @return The content stored as a String using the {@link PubSubMessage#CHARSET}.
+     */
+    public String getContentAsString() {
+        return content == null ? null : new String(content, CHARSET);
+    }
+
     @Override
     public int hashCode() {
-        return (id + sequence).hashCode();
+        return id.hashCode();
     }
 
     @Override
@@ -163,7 +159,7 @@ public class PubSubMessage implements Serializable, JSONFormatter {
             return false;
         }
         PubSubMessage otherMessage = (PubSubMessage) other;
-        return id.equals(otherMessage.getId()) && sequence == otherMessage.getSequence();
+        return id.equals(otherMessage.getId());
     }
 
     @Override

@@ -6,24 +6,24 @@
 package com.yahoo.bullet.pubsub;
 
 import com.yahoo.bullet.common.BulletConfig;
-import org.mockito.Mockito;
 
 import java.util.List;
 
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 public class MockPubSub extends PubSub {
     public static final String MOCK_MESSAGE_NAME = "MOCK_MESSAGE";
-    private String mockMessage;
+    private byte[] mockMessage;
 
     public MockPubSub(BulletConfig config) throws PubSubException {
         super(config);
-        mockMessage = getRequiredConfig(String.class, MOCK_MESSAGE_NAME);
+        mockMessage = getRequiredConfig(byte[].class, MOCK_MESSAGE_NAME);
     }
 
     @Override
     public Subscriber getSubscriber() {
-        Subscriber mockSubscriber = Mockito.mock(Subscriber.class);
+        Subscriber mockSubscriber = mock(Subscriber.class);
         try {
             doReturn(new PubSubMessage("", mockMessage)).when(mockSubscriber).receive();
         } catch (Exception e) {
@@ -34,7 +34,7 @@ public class MockPubSub extends PubSub {
 
     @Override
     public Publisher getPublisher() {
-        throw new UnsupportedOperationException();
+        return mock(Publisher.class);
     }
 
     @Override
@@ -50,6 +50,6 @@ public class MockPubSub extends PubSub {
     @Override
     public void switchContext(Context context, BulletConfig config) throws PubSubException {
         super.switchContext(context, config);
-        mockMessage = getRequiredConfig(String.class, MOCK_MESSAGE_NAME);
+        mockMessage = getRequiredConfig(byte[].class, MOCK_MESSAGE_NAME);
     }
 }

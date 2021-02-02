@@ -9,11 +9,11 @@ import com.yahoo.bullet.pubsub.PubSub.Context;
 import com.yahoo.bullet.record.BulletRecordProvider;
 import com.yahoo.bullet.result.Meta;
 import com.yahoo.bullet.result.Meta.Concept;
+import com.yahoo.bullet.typesystem.Schema;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -64,7 +64,12 @@ public class BulletConfig extends Config {
     public static final String PUBSUB_CONTEXT_NAME = "bullet.pubsub.context.name";
     public static final String PUBSUB_CLASS_NAME = "bullet.pubsub.class.name";
 
+    public static final String STORAGE_CLASS_NAME = "bullet.storage.class.name";
+
+    public static final String METRIC_PUBLISHER_CLASS_NAME = "bullet.metric.publisher.class.name";
+
     public static final String RECORD_PROVIDER_CLASS_NAME = "bullet.record.provider.class.name";
+    public static final String RECORD_SCHEMA_FILE_NAME = "bullet.record.schema.file.name";
 
     public static final String QUERY_PARTITIONER_ENABLE = "bullet.query.partitioner.enable";
     public static final String QUERY_PARTITIONER_CLASS_NAME = "bullet.query.partitioner.class.name";
@@ -105,7 +110,7 @@ public class BulletConfig extends Config {
     public static final List<Map<String, String>> DEFAULT_RESULT_METADATA_METRICS =
         makeMetadata(ImmutablePair.of(Concept.QUERY_METADATA, "Query"),
                      ImmutablePair.of(Concept.QUERY_ID, "ID"),
-                     ImmutablePair.of(Concept.QUERY_BODY, "Body"),
+                     ImmutablePair.of(Concept.QUERY_STRING, "Query String"),
                      ImmutablePair.of(Concept.QUERY_RECEIVE_TIME, "Receive Time"),
                      ImmutablePair.of(Concept.QUERY_FINISH_TIME, "Finish Time"),
                      ImmutablePair.of(Concept.SKETCH_METADATA, "Sketch"),
@@ -148,6 +153,8 @@ public class BulletConfig extends Config {
     // Validator definitions for the configs in this class.
     // This can be static since VALIDATOR itself does not change for different values for fields in the BulletConfig.
     private static final Validator VALIDATOR = new Validator();
+    private static final long serialVersionUID = 8074017371059016233L;
+    public static final String DEFAULT_CONFIGURATION_NAME = "bullet_defaults.yaml";
 
     static {
         VALIDATOR.define(QUERY_DEFAULT_DURATION)
@@ -275,6 +282,9 @@ public class BulletConfig extends Config {
         VALIDATOR.define(RECORD_PROVIDER_CLASS_NAME)
                  .defaultTo(DEFAULT_RECORD_PROVIDER_CLASS_NAME)
                  .checkIf(Validator::isClassName);
+        VALIDATOR.define(RECORD_SCHEMA_FILE_NAME)
+                 .checkIf(Validator::isString)
+                 .unless(Validator::isNull);
 
         VALIDATOR.define(QUERY_PARTITIONER_ENABLE)
                  .defaultTo(DEFAULT_QUERY_PARTITIONER_ENABLE)
@@ -317,7 +327,6 @@ public class BulletConfig extends Config {
     }
 
     // Members
-    public static final String DEFAULT_CONFIGURATION_NAME = "bullet_defaults.yaml";
     private BulletRecordProvider provider;
 
     /**
@@ -350,12 +359,20 @@ public class BulletConfig extends Config {
         return provider;
     }
 
+    public Schema getSchema() {
+        String schemaFile = getAs(RECORD_SCHEMA_FILE_NAME, String.class);
+        if (schemaFile == null) {
+            return null;
+        }
+        return new Schema(schemaFile);
+    }
+
     /**
      * Validates and fixes configuration for this config. If there are undefaulted or wrongly typed elements, you
      * should use a {@link Validator} to define the appropriate definitions, casters and defaults to use. You
      * should call this method before you use the config if you set additional settings to ensure that all configurations
      * are valid.
-     *
+     * <p>
      * This class defines a validator for all the fields it knows about. If you subclass it and define your own fields,
      * you should {@link #getValidator()} and add entries and relationships that you need to validate. Make sure
      * to call this method from your override if you wish validate your new definitions.
@@ -393,16 +410,8 @@ public class BulletConfig extends Config {
      * @return A created instance of this class.
      * @throws RuntimeException if there were issues creating an instance. It wraps the real exception.
      */
-    @SuppressWarnings("unchecked")
     public <S> S loadConfiguredClass(String classNameKey) {
-        try {
-            String name = (String) this.get(classNameKey);
-            Class<? extends S> className = (Class<? extends S>) Class.forName(name);
-            Constructor<? extends S> constructor = className.getConstructor(BulletConfig.class);
-            return constructor.newInstance(this);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return Utilities.loadConfiguredClass(this.getAs(classNameKey, String.class), this);
     }
 
     @SuppressWarnings("unchecked")
@@ -419,7 +428,7 @@ public class BulletConfig extends Config {
 
     @SuppressWarnings("unchecked")
     private static boolean alreadySetMetadata(Object metadata) {
-        if (metadata == null || !(metadata instanceof Map)) {
+        if (!(metadata instanceof Map)) {
             return false;
         }
         try {

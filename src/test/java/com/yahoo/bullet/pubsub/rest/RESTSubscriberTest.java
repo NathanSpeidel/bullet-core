@@ -27,6 +27,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 public class RESTSubscriberTest {
+    private static final byte[] CONTENT = "bar".getBytes(PubSubMessage.CHARSET);
+
     private CloseableHttpClient mockClient(int responseCode, String message) throws Exception {
         CloseableHttpClient mockClient = mock(CloseableHttpClient.class);
         CloseableHttpResponse mockResponse = mock(CloseableHttpResponse.class);
@@ -44,17 +46,29 @@ public class RESTSubscriberTest {
 
     @Test
     public void testGetMessages() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", CONTENT).asJSON();
         CloseableHttpClient mockClient = mockClient(RESTPubSub.OK_200, message);
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
         List<PubSubMessage> messages = subscriber.getMessages();
         Assert.assertEquals(messages.size(), 2);
-        Assert.assertEquals(messages.get(0).asJSON(), "{\"id\":\"foo\",\"sequence\":-1,\"content\":\"bar\",\"metadata\":null}");
+        Assert.assertEquals(messages.get(0).asJSON(), "{\"id\":\"foo\",\"content\":[98,97,114],\"metadata\":null}");
+    }
+
+    @Test
+    public void testGetMessagesWithRESTMetadata() throws Exception {
+        String message = new PubSubMessage("foo", CONTENT, new RESTMetadata("bar")).asJSON();
+        CloseableHttpClient mockClient = mockClient(RESTPubSub.OK_200, message);
+        RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
+        List<PubSubMessage> messages = subscriber.getMessages();
+        Assert.assertEquals(messages.size(), 2);
+        Assert.assertEquals(messages.get(0).getId(), "foo");
+        Assert.assertEquals(messages.get(0).getContent(), CONTENT);
+        Assert.assertEquals(((RESTMetadata) messages.get(0).getMetadata()).getUrl(), "bar");
     }
 
     @Test
     public void testGetMessages204() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(RESTPubSub.NO_CONTENT_204, message);
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
 
@@ -64,7 +78,7 @@ public class RESTSubscriberTest {
 
     @Test
     public void testGetMessages500() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(500, message);
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
 
@@ -74,7 +88,7 @@ public class RESTSubscriberTest {
 
     @Test
     public void testGetMessagesDoesNotThrow() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(500, message);
         List<String> urls = new ArrayList<>();
         // A null url will throw an error - make sure it handled eloquently
@@ -87,7 +101,7 @@ public class RESTSubscriberTest {
 
     @Test
     public void testClose() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(500, message);
         doNothing().when(mockClient).close();
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
@@ -98,7 +112,7 @@ public class RESTSubscriberTest {
 
     @Test
     public void testCloseDoesNotThrow() throws Exception {
-        String message = new PubSubMessage("foo", "bar").asJSON();
+        String message = new PubSubMessage("foo", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(500, message);
         doThrow(new IOException("error!")).when(mockClient).close();
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 10, 3000);
@@ -109,7 +123,7 @@ public class RESTSubscriberTest {
 
     @Test
     public void testMinWait() throws Exception {
-        String message = new PubSubMessage("someID", "someContent").asJSON();
+        String message = new PubSubMessage("someID", new byte[0]).asJSON();
         CloseableHttpClient mockClient = mockClient(RESTPubSub.OK_200, message);
         RESTSubscriber subscriber = new RESTSubscriber(88, Arrays.asList("url", "anotherURL"), mockClient, 600000, 3000);
 
